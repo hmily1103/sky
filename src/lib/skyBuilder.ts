@@ -2,6 +2,7 @@ import { SkyData } from '../types/sky'
 import { createRng } from './prng'
 import { kelvinToRgb } from './color'
 import { generateHorizon, HorizonProfile } from './horizon'
+import { buildSkylineHorizon } from '../astronomy/skyline'
 import { CONFIG } from '../config/animationConfig'
 
 // 渲染层所需的缓冲数据（纯数值，交给 Three.js 使用）
@@ -44,6 +45,8 @@ export interface BuiltSky {
   ambient: Float32Array
   /** 真实星座连线（IAU 星座形状，按观测时刻投影的 LineSegments 顶点序列） */
   constellationLines: Float32Array
+  /** 出生城市天际线金色描边的连续折线顶点（场景坐标；空数组表示无天际线） */
+  skylineEdge: Float32Array
   /** 调试信息，便于页面明确标识“视觉模拟” */
   meta: {
     seed: string
@@ -206,7 +209,9 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
   }
 
   // ---------- 地平线剪影（环绕一圈的竖直墙） ----------
-  const horizonProfile = generateHorizon(input.locationName, 180)
+  // 优先使用出生城市的真实地标天际线（烫金剪影）；未命中则回退 procedural 地平线
+  const skyline = buildSkylineHorizon(input.locationName, 180)
+  const horizonProfile = skyline ? skyline.profile : generateHorizon(input.locationName, 180)
   const hSamples = horizonProfile.points.length
   const hR = CONFIG.horizonRadius
   const hPos = new Float32Array(hSamples * 2 * 3)
@@ -264,6 +269,16 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
   }
   const constellationLines = new Float32Array(clPts)
 
+  // ---------- 出生城市天际线金色描边（连续折线，场景坐标） ----------
+  // 仅当存在天际线数据时非空；渲染层画成烫金线。其余城市为空 → 不渲染描边。
+  const skyEdgeRaw = skyline?.edge ?? []
+  const skyEdgePts: number[] = []
+  for (const p of skyEdgeRaw) {
+    const [x, y, z] = azAltToVec(p.azimuth, p.altitude, CONFIG.horizonRadius)
+    skyEdgePts.push(x, y, z)
+  }
+  const skylineEdge = new Float32Array(skyEdgePts)
+
   return {
     main,
     galaxy,
@@ -271,6 +286,7 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     horizon,
     ambient,
     constellationLines,
+    skylineEdge,
     meta: { seed, terrain: horizonProfile.terrain, mainCount },
   }
 }

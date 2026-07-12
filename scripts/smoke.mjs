@@ -105,6 +105,13 @@ try {
   console.log('constellation segments:', segs)
   await shot('06-constellations.png')
 
+  // 出生城市天际线（北京）：烫金剪影描边点数应 > 0
+  const skylinePts = await page.evaluate(
+    () => window.__SKY_DEBUG__?.skylineEdgePoints ?? -1,
+  )
+  if (!(skylinePts > 0)) errors.push('[test] 北京天际线未渲染或描边点数为0: ' + skylinePts)
+  console.log('skyline edge points:', skylinePts)
+
   // 切换“星座”按钮：关闭后线段应不可见（visible=false）
   await page.click('.controls [data-ctrl="constellations"]')
   await sleep(400)

@@ -111,6 +111,23 @@ export default function SkyScene({
     return g
   }, [built])
 
+  // 出生城市天际线金色描边（连续折线）。无天际线城市（空数组）不渲染。
+  const skylineEdgeGeo = useMemo(() => {
+    if (!built.skylineEdge || built.skylineEdge.length < 6) return null
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(built.skylineEdge, 3))
+    // 仅开发期：暴露天际线描边点数，供无头冒烟测试断言（不进生产包）
+    if (import.meta.env.DEV) {
+      const pts = built.skylineEdge.length / 3
+      const dbg = (window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ || {}
+      ;(window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ = {
+        ...dbg,
+        skylineEdgePoints: pts,
+      }
+    }
+    return g
+  }, [built])
+
   const pixelRatio = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)
 
   const makeStarMat = (sizeScale: number, opacity: number) =>
@@ -171,6 +188,28 @@ export default function SkyScene({
     [],
   )
 
+  // 天际线金色描边材质（烫金印章感）：additive 让金线在深色剪影上"发光"
+  const skylineEdgeMat = useMemo(
+    () =>
+      new THREE.LineBasicMaterial({
+        color: new THREE.Color(CONFIG.skyline.goldColor),
+        transparent: true,
+        opacity: CONFIG.skyline.edgeOpacity,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    [],
+  )
+
+  // 用 THREE.Line 对象渲染连续折线（避免 JSX <line> 与 SVG 元素类型冲突）
+  const skylineEdgeLine = useMemo(() => {
+    if (!skylineEdgeGeo) return null
+    const line = new THREE.Line(skylineEdgeGeo, skylineEdgeMat)
+    line.renderOrder = 3
+    line.frustumCulled = false
+    return line
+  }, [skylineEdgeGeo, skylineEdgeMat])
+
   // ---------- 方向标记 N/E/S/W（默认隐藏，信息层开启时显示） ----------
   const directionsGroup = useMemo(() => {
     const g = new THREE.Group()
@@ -205,13 +244,16 @@ export default function SkyScene({
   useEffect(() => {
     return () => {
       ;[mainGeo, galaxyGeo, dustGeo, horizonGeo, constGeo, ambientGeo].forEach((g) => g.dispose())
-      ;[mainMat, galaxyMat, dustMat, horizonMat, constMat, ambientMat].forEach((m) => m.dispose())
+      skylineEdgeGeo?.dispose()
+      ;[mainMat, galaxyMat, dustMat, horizonMat, constMat, ambientMat, skylineEdgeMat].forEach((m) =>
+        m.dispose(),
+      )
       dirMats.forEach((m) => {
         m.map?.dispose()
         m.dispose()
       })
     }
-  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats])
+  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat])
 
   // ---------- 交互与动画状态 ----------
   const phaseRef = useRef(phase)
@@ -318,6 +360,7 @@ export default function SkyScene({
     dustMat.uniforms.uOpacity.value = 0.5 * f
     horizonMat.opacity = 0.95 * f
     constMat.opacity = 0.32 * f
+    skylineEdgeMat.opacity = CONFIG.skyline.edgeOpacity * f
     // 星尘只在输入/倒流界面作为背景；星空形成后隐藏，保证“完全变黑”再点亮
     const ambVis = phaseRef.current === 'input' || phaseRef.current === 'rewind' ? 1 : 0
     ambientMat.opacity = CONFIG.ambientDust.opacity * ambVis * f
@@ -334,6 +377,7 @@ export default function SkyScene({
         <points args={[dustGeo, dustMat]} />
         <mesh args={[horizonGeo, horizonMat]} />
         <lineSegments visible={showConstellations} args={[constGeo, constMat]} />
+        {skylineEdgeLine && <primitive object={skylineEdgeLine} />}
         <primitive object={directionsGroup} />
       </group>
       <group ref={ambientRef}>
