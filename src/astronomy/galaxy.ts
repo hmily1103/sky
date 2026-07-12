@@ -51,40 +51,69 @@ function galacticToEquatorial(lDeg: number, bDeg: number): { ra: number; dec: nu
  * 沿真实银道面采样，生成“走向与中心增亮”都符合真实的银河带点。
  * magnitude 字段存相对亮度(0–1)，供渲染层决定亮度/尺寸。
  *
- * 注意：原本在银经/银纬上按固定步长生成规则网格，投影后会出现“横平竖直”的
- * 人工晶格。现对每个格点做确定性抖动（±半个步长），保持全局密度轮廓不变，
- * 但让单点位置随机化，使银河带看起来是真实的弥散光带，而不是一行行点阵。
+ * 解决“直尺”感：
+ * 1. 降低采样密度，让点间距大于点半径，自然融合而不是排列成行。
+ * 2. 抖动幅度扩大到 ±1.5 步长，把规则格点彻底打散。
+ * 3. 在银道面附近额外随机撒 25% 弥散点，模拟真实银河中的气体/尘埃云团。
+ * 4. 亮度加入局部涨落，让光带出现明暗斑块而不是均匀条带。
  */
 export function buildMilkyWay(observer: Observer, utc: Date): SkyObject[] {
   const out: SkyObject[] = []
   const rng = createRng('milkyway')
-  const lStep = 2.0
-  const bMax = 16
-  const bStep = 1.4
+  const lStep = 2.8
+  const bMax = 14
+  const bStep = 2.2
   for (let l = 0; l < 360; l += lStep) {
     const dl = Math.abs(((l + 180) % 360) - 180) // 距银心角距 0–180
-    const longFactor = 0.22 + 0.78 * Math.exp(-(dl * dl) / (2 * 42 * 42))
+    const longFactor = 0.20 + 0.80 * Math.exp(-(dl * dl) / (2 * 40 * 40))
     for (let b = -bMax; b <= bMax; b += bStep) {
-      const latFactor = Math.exp(-(b * b) / (2 * 8.5 * 8.5))
+      const latFactor = Math.exp(-(b * b) / (2 * 7.5 * 7.5))
       const intensity = longFactor * latFactor
-      if (intensity < 0.05) continue
-      // 确定性抖动：把格点打散，避免规则点阵
-      const lJ = l + (rng() - 0.5) * lStep
-      const bJ = b + (rng() - 0.5) * bStep
+      if (intensity < 0.06) continue
+      // 大抖动：把格点打散，±1.5 步长避免规则点阵
+      const lJ = l + (rng() - 0.5) * lStep * 1.5
+      const bJ = b + (rng() - 0.5) * bStep * 1.5
       const { ra, dec } = galacticToEquatorial(lJ, bJ)
-      // ra 为角度制，Horizon() 要求小时制，必须换算
       const hor = Astronomy.Horizon(utc, observer, raDegToHours(ra), dec, 'normal')
       if (hor.altitude < -3) continue
+      // 局部亮度涨落，制造真实光带中的明暗斑块
+      const patch = 0.65 + 0.35 * Math.sin(lJ * 2.3 + bJ * 0.7) + 0.15 * rng()
       const ct = 5600 + (bJ / bMax) * 1600 + Math.sin(lJ * 1.7) * 300
       out.push({
         id: `mw-${l.toFixed(1)}_${b.toFixed(1)}`,
         type: 'galaxy',
         azimuth: hor.azimuth,
         altitude: hor.altitude,
-        magnitude: intensity,
+        magnitude: Math.min(1, intensity * patch),
         colorTemperature: ct,
       })
     }
   }
+
+  // 弥散云团：在银道面附近随机撒点，打破规则条带感
+  const diffuseCount = Math.floor(out.length * 0.25)
+  for (let i = 0; i < diffuseCount; i++) {
+    const l = rng() * 360
+    const dl = Math.abs(((l + 180) % 360) - 180)
+    const longFactor = 0.20 + 0.80 * Math.exp(-(dl * dl) / (2 * 40 * 40))
+    // 银纬集中在 ±6° 内，模拟银道面尘埃带
+    const b = (rng() - 0.5) * 12 * (0.3 + 0.7 * longFactor)
+    const latFactor = Math.exp(-(b * b) / (2 * 7.5 * 7.5))
+    const intensity = longFactor * latFactor * (0.45 + 0.55 * rng())
+    if (intensity < 0.08) continue
+    const { ra, dec } = galacticToEquatorial(l, b)
+    const hor = Astronomy.Horizon(utc, observer, raDegToHours(ra), dec, 'normal')
+    if (hor.altitude < -3) continue
+    const ct = 5600 + (b / bMax) * 1600 + Math.sin(l * 1.7) * 300
+    out.push({
+      id: `mw-diffuse-${i}`,
+      type: 'galaxy',
+      azimuth: hor.azimuth,
+      altitude: hor.altitude,
+      magnitude: intensity,
+      colorTemperature: ct,
+    })
+  }
+
   return out
 }

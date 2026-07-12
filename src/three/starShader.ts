@@ -56,23 +56,21 @@ export const starFragmentShader = /* glsl */ `
     float d = length(uv);          // 0=中心, 0.5=精灵边缘
     if (d > 0.5) discard;
 
-    // 真实星点：极亮小核 + 极淡自然晕。
-    // 用类高斯 point-spread function，能量集中在中心并快速衰减，
-    // 避免之前“核心+满盘柔光”造成的扁平动漫色块感。
-    float core = exp(-d * d * 28.0);        // 极紧核心，半径约 0.2 内很亮
-    float bloom = exp(-d * d * 7.0) * 0.22; //  faint 弥散晕，范围小、亮度低
+    // 真实星点：极小亮核 + 几乎不可见的自然晕，避免大色块/动漫感。
+    float core = exp(-d * d * 36.0);        // 极紧核心，半径约 0.17 内很亮
+    float bloom = exp(-d * d * 14.0) * 0.10; // 极淡弥散晕，范围收得很小
 
     float intensity = core + bloom;
     float alpha = intensity * vBright * uOpacity;
     if (alpha < 0.005) discard;
 
-    // 核心偏白亮，柔晕几乎无色且很淡，保留星点本色的同时不让色块浮起来
-    vec3 bloomCol = mix(vColor, vec3(1.0), 0.55) * bloom;
-    vec3 col = vColor * (0.35 + 1.7 * core) + bloomCol;
+    // 柔晕几乎无色且很淡，保留星点本色
+    vec3 bloomCol = mix(vColor, vec3(1.0), 0.65) * bloom;
+    vec3 col = vColor * (0.25 + 1.55 * core) + bloomCol;
 
     // 首星：仅一层极淡外晕做标记，保持克制
     if (vHero > 0.5) {
-      float heroHalo = exp(-d * d * 4.5) * 0.15;
+      float heroHalo = exp(-d * d * 6.5) * 0.08;
       col += vColor * heroHalo;
       alpha = clamp(alpha + heroHalo * vBright * uOpacity, 0.0, 1.0);
     }

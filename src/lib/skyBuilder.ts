@@ -200,7 +200,7 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     galaxy.colors[i * 3 + 1] = g * bright
     galaxy.colors[i * 3 + 2] = b * bright
 
-    galaxy.sizes[i] = CONFIG.stars.galaxySize * (0.7 + 1.3 * bright)
+    galaxy.sizes[i] = CONFIG.stars.galaxySize * (0.55 + 0.75 * bright)
     // 银河带在星空之后、安静停顿前淡入；按数组顺序由一端向另一端展开
     galaxy.reveals[i] =
       CONFIG.reveal.galaxyStart +

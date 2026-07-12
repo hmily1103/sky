@@ -211,9 +211,9 @@ export default function SkyScene({
       blending: THREE.AdditiveBlending,
     })
 
-  const mainMat = useMemo(() => makeStarMat(isMobile ? 2.5 : 3.8, 1), [isMobile, reducedMotion])
-  const galaxyMat = useMemo(() => makeStarMat(isMobile ? 2.2 : 3.2, 0.85), [isMobile, reducedMotion])
-  const dustMat = useMemo(() => makeStarMat(isMobile ? 1.2 : 1.6, 0.5), [isMobile, reducedMotion])
+  const mainMat = useMemo(() => makeStarMat(isMobile ? 2.2 : 3.2, 1), [isMobile, reducedMotion])
+  const galaxyMat = useMemo(() => makeStarMat(isMobile ? 1.6 : 2.4, 0.85), [isMobile, reducedMotion])
+  const dustMat = useMemo(() => makeStarMat(isMobile ? 1.0 : 1.4, 0.5), [isMobile, reducedMotion])
 
   const horizonMat = useMemo(
     () =>

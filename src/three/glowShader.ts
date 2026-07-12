@@ -13,7 +13,7 @@ export const glowVertexShader = /* glsl */ `
   void main() {
     vColor = aColor;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = aSize * uSizeScale * uPixelRatio * (260.0 / max(-mv.z, 1.0));
+    gl_PointSize = aSize * uSizeScale * uPixelRatio * (180.0 / max(-mv.z, 1.0));
     gl_Position = projectionMatrix * mv;
   }
 `
@@ -29,11 +29,11 @@ export const glowFragmentShader = /* glsl */ `
   void main() {
     vec2 uv = gl_PointCoord - 0.5;
     float r = length(uv) * 2.0;
-    // 柔光晕（高斯衰减）
-    float glow = exp(-r * r * 2.2);
-    // 十字衍射星芒
-    float sx = exp(-abs(uv.y) * 16.0) * max(0.0, 1.0 - abs(uv.x) * 2.5);
-    float sy = exp(-abs(uv.x) * 16.0) * max(0.0, 1.0 - abs(uv.y) * 2.5);
+    // 柔光晕：范围更小、更淡，只给亮星一点点空气感
+    float glow = exp(-r * r * 4.0) * 0.45;
+    // 十字衍射星芒（更细更短，避免大白十字）
+    float sx = exp(-abs(uv.y) * 22.0) * max(0.0, 1.0 - abs(uv.x) * 3.2);
+    float sy = exp(-abs(uv.x) * 22.0) * max(0.0, 1.0 - abs(uv.y) * 3.2);
     float spike = sx + sy;
     float a = glow * 0.65 + spike * 0.55;
     float alpha = a * uOpacity * uReveal;
