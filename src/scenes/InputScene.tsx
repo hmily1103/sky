@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, type ChangeEvent } from 'react'
 import { BirthSkyInput, GeoLocationResult } from '../types/sky'
 import { SIMULATION_NOTE } from '../lib/skyGenerator'
-import { resolveBirthLocation } from '../astronomy/location'
+import { resolveBirthLocation, searchCities, type CitySuggestion } from '../astronomy/location'
 
 interface InputSceneProps {
   initial: BirthSkyInput
@@ -21,6 +21,8 @@ export default function InputScene({ initial, onSubmit }: InputSceneProps) {
   const [loc, setLoc] = useState(initial.locationName ?? '')
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState<GeoLocationResult | null>(null)
+  const [suggestions, setSuggestions] = useState<CitySuggestion[]>([])
+  const [openSuggest, setOpenSuggest] = useState(false)
 
   const handleSubmit = async () => {
     if (!date) {
@@ -43,6 +45,19 @@ export default function InputScene({ initial, onSubmit }: InputSceneProps) {
 
   const handleConfirm = () => {
     onSubmit({ date, time: time || undefined, locationName: loc.trim() })
+  }
+
+  const onLocChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value
+    setLoc(v)
+    setSuggestions(searchCities(v))
+    setOpenSuggest(v.trim().length > 0)
+  }
+
+  const pickSuggestion = (name: string) => {
+    setLoc(name)
+    setSuggestions([])
+    setOpenSuggest(false)
   }
 
   // 确认卡：显示解析结果，要求用户确认
@@ -113,16 +128,36 @@ export default function InputScene({ initial, onSubmit }: InputSceneProps) {
             <span className="field-hint">不知道也没关系，我们会以当晚 21:00 为你还原。</span>
           </label>
 
-          <label className="field">
+          <div className="field">
             <span className="field-label">出生地点</span>
             <input
               type="text"
               className="field-input"
               placeholder="例如：北京 / 上海 / 辽宁锦州 / Tokyo"
               value={loc}
-              onChange={(e) => setLoc(e.target.value)}
+              autoComplete="off"
+              onChange={onLocChange}
+              onFocus={() => {
+                if (loc.trim()) {
+                  setSuggestions(searchCities(loc))
+                  setOpenSuggest(true)
+                }
+              }}
+              onBlur={() => {
+                // 延迟关闭，留出时间让 suggestion 的 mousedown 先触发
+                window.setTimeout(() => setOpenSuggest(false), 120)
+              }}
             />
-          </label>
+            {openSuggest && suggestions.length > 0 && (
+              <ul className="loc-suggest">
+                {suggestions.map((s) => (
+                  <li key={s.displayName} onMouseDown={() => pickSuggestion(s.displayName)}>
+                    {s.displayName}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           {error && <div className="form-error">{error}</div>}
 

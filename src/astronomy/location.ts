@@ -101,3 +101,44 @@ export function findCitySync(locationName: string): GeoLocationResult | null {
     countryCode: hit.countryCode,
   }
 }
+
+/** 城市联想建议项（供下拉展示用） */
+export interface CitySuggestion {
+  displayName: string
+  latitude: number
+  longitude: number
+  timezone: string
+  countryCode: string
+}
+
+/**
+ * 模糊搜索城市（供输入联想下拉使用）。
+ * - 本地城市库，无网络 / 无 API Key / 即时；
+ * - 对 displayName 与别名做包含匹配，按“开头命中优先”排序；
+ * - 返回空串 / 过短查询直接返回空数组。
+ */
+export function searchCities(query: string, limit = 8): CitySuggestion[] {
+  const q = normalize(query)
+  if (!q) return []
+  const hits = CITY_DB
+    .map((c) => {
+      const name = normalize(c.displayName)
+      const aliasHit = c.aliases.some((a) => a.includes(q))
+      const nameHit = name.includes(q)
+      if (!aliasHit && !nameHit) return null
+      let score = 2
+      if (name.startsWith(q)) score = 0
+      else if (c.aliases.some((a) => a.startsWith(q))) score = 1
+      return { c, score }
+    })
+    .filter((x): x is { c: CityRecord; score: number } => x !== null)
+    .sort((a, b) => a.score - b.score || a.c.displayName.localeCompare(b.c.displayName))
+    .slice(0, limit)
+  return hits.map(({ c }) => ({
+    displayName: c.displayName,
+    latitude: c.latitude,
+    longitude: c.longitude,
+    timezone: c.timezone,
+    countryCode: c.countryCode,
+  }))
+}

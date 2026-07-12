@@ -110,6 +110,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: relative;
 }
 
 .field-label {
@@ -146,6 +147,40 @@ body {
   font-size: 12px;
   color: var(--ink-faint);
   letter-spacing: 0.02em;
+}
+
+/* 城市输入联想下拉 */
+.loc-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 6px;
+  z-index: 20;
+  list-style: none;
+  padding: 6px;
+  background: rgba(7, 10, 20, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.loc-suggest li {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.loc-suggest li:hover,
+.loc-suggest li.active {
+  background: rgba(201, 183, 143, 0.12);
+  color: var(--gold);
 }
 
 .form-error {
