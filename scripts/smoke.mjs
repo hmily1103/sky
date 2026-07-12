@@ -146,6 +146,19 @@ try {
   if (!(skylinePts > 0)) errors.push('[test] 北京天际线未渲染或描边点数为0: ' + skylinePts)
   console.log('skyline edge points:', skylinePts)
 
+  // 专业星图补强：深空天体（梅西耶）与亮星辉光应已渲染
+  const deepSkyCount = await page.evaluate(
+    () => window.__SKY_DEBUG__?.deepSkyCount ?? -1,
+  )
+  if (!(deepSkyCount > 0)) errors.push('[test] 深空天体(梅西耶)未渲染或数量为0: ' + deepSkyCount)
+  console.log('deep sky objects:', deepSkyCount)
+
+  const glowCount = await page.evaluate(
+    () => window.__SKY_DEBUG__?.glowCount ?? -1,
+  )
+  if (!(glowCount > 0)) errors.push('[test] 亮星辉光未渲染或数量为0: ' + glowCount)
+  console.log('bright-star glow count:', glowCount)
+
   // 切换“星座”按钮：关闭后线段应不可见（visible=false）
   await page.click('.controls [data-ctrl="constellations"]')
   await sleep(400)

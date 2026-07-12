@@ -36,6 +36,27 @@ export interface HorizonGeometryData {
   profile: HorizonProfile
 }
 
+/** 深空天体（梅西耶）柔和图标缓冲：按类型画椭圆/圆斑，additive 叠加 */
+export interface DeepSkyBuffers {
+  positions: Float32Array
+  colors: Float32Array
+  /** 基准像素尺寸（已由真实角尺寸 × gain 并 clamp） */
+  sizes: Float32Array
+  /** 位置角（弧度），椭圆长轴朝向 */
+  pa: Float32Array
+  /** 主轴/次轴比（>=1）：星系拉长，其余为 1 */
+  stretch: Float32Array
+  count: number
+}
+
+/** 亮星辉光缓冲：柔光晕 + 十字衍射星芒（仅视星等 < glowMag 的最亮星） */
+export interface GlowBuffers {
+  positions: Float32Array
+  colors: Float32Array
+  sizes: Float32Array
+  count: number
+}
+
 export interface BuiltSky {
   main: StarBuffers
   galaxy: StarBuffers
@@ -47,6 +68,10 @@ export interface BuiltSky {
   constellationLines: Float32Array
   /** 出生城市天际线金色描边的连续折线顶点（场景坐标；空数组表示无天际线） */
   skylineEdge: Float32Array
+  /** 深空天体柔和图标（梅西耶，按类型渲染） */
+  deepSky: DeepSkyBuffers
+  /** 亮星辉光（柔光 + 衍射星芒） */
+  glow: GlowBuffers
   /** 调试信息，便于页面明确标识“视觉模拟” */
   meta: {
     seed: string
@@ -88,8 +113,8 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
   const seed = `${input.date}|${timeKey}|${input.locationName}`
   const R = CONFIG.sphereRadius
 
-  // ---------- 主星（含行星）：galaxy 走独立缓冲，这里排除 ----------
-  const starPlanet = objects.filter((o) => o.type !== 'galaxy')
+  // ---------- 主星（含行星）：galaxy / deepsky 走独立缓冲，这里排除 ----------
+  const starPlanet = objects.filter((o) => o.type !== 'galaxy' && o.type !== 'deepsky')
   const sorted = [...starPlanet].sort((a, b) => a.magnitude - b.magnitude)
   const mainCount = Math.min(
     sorted.length,
@@ -279,6 +304,63 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
   }
   const skylineEdge = new Float32Array(skyEdgePts)
 
+  // ---------- 深空天体（梅西耶）：柔和图标，按类型区分长轴/色调 ----------
+  // 数据层已按观测时刻投影，且仅保留地平线以上；这里只负责转成渲染缓冲。
+  // 角尺寸偏小，乘 gain 提升可见度（非真实比例，属视觉增强，页面会标注）。
+  const dsAll = objects.filter((o) => o.type === 'deepsky')
+  const dsCount = dsAll.length
+  const deepSky: DeepSkyBuffers = {
+    positions: new Float32Array(dsCount * 3),
+    colors: new Float32Array(dsCount * 3),
+    sizes: new Float32Array(dsCount),
+    pa: new Float32Array(dsCount),
+    stretch: new Float32Array(dsCount),
+    count: dsCount,
+  }
+  for (let i = 0; i < dsCount; i++) {
+    const o = dsAll[i]
+    const [x, y, z] = azAltToVec(o.azimuth, o.altitude, R)
+    deepSky.positions[i * 3] = x
+    deepSky.positions[i * 3 + 1] = y
+    deepSky.positions[i * 3 + 2] = z
+    const c = o.color ?? [1, 1, 1]
+    deepSky.colors[i * 3] = c[0]
+    deepSky.colors[i * 3 + 1] = c[1]
+    deepSky.colors[i * 3 + 2] = c[2]
+    const major = o.sizeArcmin?.[0] ?? 5
+    const minor = o.sizeArcmin?.[1] ?? major
+    const px = Math.min(CONFIG.deepsky.maxSize, Math.max(CONFIG.deepsky.minSize, major * CONFIG.deepsky.gain))
+    deepSky.sizes[i] = px
+    deepSky.pa[i] = ((o.pa ?? 0) * Math.PI) / 180
+    const st = minor > 0 ? major / minor : 1
+    deepSky.stretch[i] = Math.min(4, Math.max(1, st))
+  }
+
+  // ---------- 亮星辉光（柔光晕 + 衍射星芒）：仅最亮星，克制 ----------
+  const glowStars = mainTop.filter(
+    (o) => (o.type === 'star' || o.type === 'planet') && o.magnitude < CONFIG.stars.glowMag,
+  )
+  const glowCount = glowStars.length
+  const glow: GlowBuffers = {
+    positions: new Float32Array(glowCount * 3),
+    colors: new Float32Array(glowCount * 3),
+    sizes: new Float32Array(glowCount),
+    count: glowCount,
+  }
+  for (let i = 0; i < glowCount; i++) {
+    const o = glowStars[i]
+    const [x, y, z] = azAltToVec(o.azimuth, o.altitude, R)
+    glow.positions[i * 3] = x
+    glow.positions[i * 3 + 1] = y
+    glow.positions[i * 3 + 2] = z
+    const [r, g, b] = kelvinToRgb(o.colorTemperature ?? 5800)
+    glow.colors[i * 3] = r
+    glow.colors[i * 3 + 1] = g
+    glow.colors[i * 3 + 2] = b
+    const t = Math.min(1, Math.max(0, (o.magnitude + 1.5) / 4)) // 越亮(星等越小) t 越小
+    glow.sizes[i] = CONFIG.stars.glowSize * (1.5 - t)
+  }
+
   return {
     main,
     galaxy,
@@ -287,6 +369,8 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     ambient,
     constellationLines,
     skylineEdge,
+    deepSky,
+    glow,
     meta: { seed, terrain: horizonProfile.terrain, mainCount },
   }
 }

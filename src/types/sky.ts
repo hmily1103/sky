@@ -17,8 +17,17 @@ export interface BirthSkyInput {
 export interface SkyObject {
   id: string
   /** star/planet 走主星缓冲（按星等映射亮度尺寸）；galaxy 为真实银道面定位的银河带点，
-   *  magnitude 字段在此解释为该点的相对亮度(0–1)，供渲染层决定亮度/尺寸 */
-  type: 'star' | 'planet' | 'galaxy'
+   *  magnitude 字段在此解释为该点的相对亮度(0–1)，供渲染层决定亮度/尺寸；
+   *  deepsky 为真实深空天体（梅西耶），走独立的柔和图标缓冲，不混入恒星点。 */
+  type: 'star' | 'planet' | 'galaxy' | 'deepsky'
+  /** 深空天体细类，用于渲染时选择图标与色调 */
+  deepSkyKind?: 'open' | 'globular' | 'nebula' | 'planetary' | 'snr' | 'galaxy' | 'double' | 'asterism'
+  /** 角尺寸 [长径, 短径]，单位角分 */
+  sizeArcmin?: [number, number]
+  /** 位置角（长轴方向），度 */
+  pa?: number
+  /** 显式 RGB 颜色（0–1），深空/特殊天体用，绕过色温以保证色调准确 */
+  color?: [number, number, number]
   /** 方位角，单位度，0–360 */
   azimuth: number
   /** 高度角（地平线以上），单位度，可为轻微负值 */

@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import gsap from 'gsap'
-import { buildSkyScene, StarBuffers, horizontalToScenePosition } from '../lib/skyBuilder'
+import { buildSkyScene, StarBuffers, DeepSkyBuffers, GlowBuffers, horizontalToScenePosition } from '../lib/skyBuilder'
 import { SkyData } from '../types/sky'
 import { CONFIG } from '../config/animationConfig'
 import { starVertexShader, starFragmentShader } from './starShader'
+import { deepSkyVertexShader, deepSkyFragmentShader } from './deepSkyShader'
+import { glowVertexShader, glowFragmentShader } from './glowShader'
 
 export type Phase = 'input' | 'rewind' | 'rising' | 'info' | 'gaze' | 'ending'
 
@@ -130,6 +132,68 @@ export default function SkyScene({
 
   const pixelRatio = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2)
 
+  // 深空天体（梅西耶）柔和图标几何：位置 + 顶点色 + 尺寸 + 位置角 + 拉伸比
+  const deepSkyGeo = useMemo(() => {
+    const b = built.deepSky
+    if (!b || b.count === 0) return null
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(b.positions, 3))
+    g.setAttribute('aColor', new THREE.BufferAttribute(b.colors, 3))
+    g.setAttribute('aSize', new THREE.BufferAttribute(b.sizes, 1))
+    g.setAttribute('aPa', new THREE.BufferAttribute(b.pa, 1))
+    g.setAttribute('aStretch', new THREE.BufferAttribute(b.stretch, 1))
+    // 仅开发期：暴露深空天体数量，供无头冒烟测试断言
+    if (import.meta.env.DEV) {
+      const dbg = (window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ || {}
+      ;(window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ = {
+        ...dbg,
+        deepSkyCount: b.count,
+      }
+    }
+    return g
+  }, [built])
+
+  // 亮星辉光几何：位置 + 顶点色 + 尺寸
+  const glowGeo = useMemo(() => {
+    const b = built.glow
+    if (!b || b.count === 0) return null
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(b.positions, 3))
+    g.setAttribute('aColor', new THREE.BufferAttribute(b.colors, 3))
+    g.setAttribute('aSize', new THREE.BufferAttribute(b.sizes, 1))
+    if (import.meta.env.DEV) {
+      const dbg = (window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ || {}
+      ;(window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ = {
+        ...dbg,
+        glowCount: b.count,
+      }
+    }
+    return g
+  }, [built])
+
+  const makeSoftMat = (
+    vert: string,
+    frag: string,
+    opacity: number,
+  ) =>
+    new THREE.ShaderMaterial({
+      uniforms: {
+        uPixelRatio: { value: pixelRatio },
+        uSizeScale: { value: 1 },
+        uOpacity: { value: opacity },
+        uReveal: { value: 0 },
+      },
+      vertexShader: vert,
+      fragmentShader: frag,
+      transparent: true,
+      depthWrite: false,
+      depthTest: true,
+      blending: THREE.AdditiveBlending,
+    })
+
+  const deepSkyMat = useMemo(() => makeSoftMat(deepSkyVertexShader, deepSkyFragmentShader, CONFIG.deepsky.baseOpacity), [pixelRatio])
+  const glowMat = useMemo(() => makeSoftMat(glowVertexShader, glowFragmentShader, CONFIG.stars.glowOpacity), [pixelRatio])
+
   const makeStarMat = (sizeScale: number, opacity: number) =>
     new THREE.ShaderMaterial({
       uniforms: {
@@ -245,15 +309,17 @@ export default function SkyScene({
     return () => {
       ;[mainGeo, galaxyGeo, dustGeo, horizonGeo, constGeo, ambientGeo].forEach((g) => g.dispose())
       skylineEdgeGeo?.dispose()
-      ;[mainMat, galaxyMat, dustMat, horizonMat, constMat, ambientMat, skylineEdgeMat].forEach((m) =>
-        m.dispose(),
+      deepSkyGeo?.dispose()
+      glowGeo?.dispose()
+      ;[mainMat, galaxyMat, dustMat, horizonMat, constMat, ambientMat, skylineEdgeMat, deepSkyMat, glowMat].forEach(
+        (m) => m.dispose(),
       )
       dirMats.forEach((m) => {
         m.map?.dispose()
         m.dispose()
       })
     }
-  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat])
+  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat, deepSkyGeo, glowGeo, deepSkyMat, glowMat])
 
   // ---------- 交互与动画状态 ----------
   const phaseRef = useRef(phase)
@@ -361,6 +427,17 @@ export default function SkyScene({
     horizonMat.opacity = 0.95 * f
     constMat.opacity = 0.32 * f
     skylineEdgeMat.opacity = CONFIG.skyline.edgeOpacity * f
+    // 深空天体与亮星辉光：在星空形成后随点亮淡入；输入/倒流界面隐藏（保证黑场再亮）
+    const skyVis = phaseRef.current === 'input' || phaseRef.current === 'rewind' ? 0 : 1
+    const reveal = clamp(elapsed / 3, 0, 1)
+    if (deepSkyMat) {
+      deepSkyMat.uniforms.uReveal.value = reveal
+      deepSkyMat.uniforms.uOpacity.value = CONFIG.deepsky.baseOpacity * f * skyVis
+    }
+    if (glowMat) {
+      glowMat.uniforms.uReveal.value = reveal
+      glowMat.uniforms.uOpacity.value = CONFIG.stars.glowOpacity * f * skyVis
+    }
     // 星尘只在输入/倒流界面作为背景；星空形成后隐藏，保证“完全变黑”再点亮
     const ambVis = phaseRef.current === 'input' || phaseRef.current === 'rewind' ? 1 : 0
     ambientMat.opacity = CONFIG.ambientDust.opacity * ambVis * f
@@ -372,6 +449,8 @@ export default function SkyScene({
     <>
       <color attach="background" args={['#05070f']} />
       <group ref={worldRef}>
+        {deepSkyGeo && <points args={[deepSkyGeo, deepSkyMat]} />}
+        {glowGeo && <points args={[glowGeo, glowMat]} />}
         <points args={[mainGeo, mainMat]} />
         <points args={[galaxyGeo, galaxyMat]} />
         <points args={[dustGeo, dustMat]} />

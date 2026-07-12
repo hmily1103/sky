@@ -20,6 +20,7 @@ import { computeStars } from './starPosition'
 import { computeSolarSystem } from './solarSystem'
 import { buildMilkyWay } from './galaxy'
 import { computeConstellationLines } from './constellationLines'
+import { computeDeepSky } from './deepSky'
 import { CATALOG_META } from './starCatalog'
 
 const ASTRONOMY_LIBRARY = 'astronomy-engine (v2)'
@@ -175,6 +176,9 @@ export function toSkyData(result: AstronomicalSkyResult): SkyData {
       phaseName: p.phaseName,
     })
   }
+
+  // 真实深空天体（梅西耶目录，按观测时刻投影）
+  objects.push(...computeDeepSky(observer, date))
 
   // 真实银河带（银道面定位）
   objects.push(...buildMilkyWay(observer, date))
