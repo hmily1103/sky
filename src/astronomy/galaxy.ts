@@ -6,6 +6,7 @@
 import * as Astronomy from 'astronomy-engine'
 import type { Observer } from 'astronomy-engine'
 import { SkyObject } from '../types/sky'
+import { createRng } from '../lib/prng'
 
 const GC_RA = 266.4051 // 银心方向赤经 (deg, J2000)
 const GC_DEC = -28.936175 // 银心方向赤纬 (deg, J2000)
@@ -48,9 +49,14 @@ function galacticToEquatorial(lDeg: number, bDeg: number): { ra: number; dec: nu
 /**
  * 沿真实银道面采样，生成“走向与中心增亮”都符合真实的银河带点。
  * magnitude 字段存相对亮度(0–1)，供渲染层决定亮度/尺寸。
+ *
+ * 注意：原本在银经/银纬上按固定步长生成规则网格，投影后会出现“横平竖直”的
+ * 人工晶格。现对每个格点做确定性抖动（±半个步长），保持全局密度轮廓不变，
+ * 但让单点位置随机化，使银河带看起来是真实的弥散光带，而不是一行行点阵。
  */
 export function buildMilkyWay(observer: Observer, utc: Date): SkyObject[] {
   const out: SkyObject[] = []
+  const rng = createRng('milkyway')
   const lStep = 2.0
   const bMax = 16
   const bStep = 1.4
@@ -61,10 +67,13 @@ export function buildMilkyWay(observer: Observer, utc: Date): SkyObject[] {
       const latFactor = Math.exp(-(b * b) / (2 * 8.5 * 8.5))
       const intensity = longFactor * latFactor
       if (intensity < 0.05) continue
-      const { ra, dec } = galacticToEquatorial(l, b)
+      // 确定性抖动：把格点打散，避免规则点阵
+      const lJ = l + (rng() - 0.5) * lStep
+      const bJ = b + (rng() - 0.5) * bStep
+      const { ra, dec } = galacticToEquatorial(lJ, bJ)
       const hor = Astronomy.Horizon(utc, observer, ra, dec, 'normal')
       if (hor.altitude < -3) continue
-      const ct = 5600 + (b / bMax) * 1600 + Math.sin(l * 1.7) * 300
+      const ct = 5600 + (bJ / bMax) * 1600 + Math.sin(lJ * 1.7) * 300
       out.push({
         id: `mw-${l.toFixed(1)}_${b.toFixed(1)}`,
         type: 'galaxy',
