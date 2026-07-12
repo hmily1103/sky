@@ -8,6 +8,8 @@ import { CONFIG } from '../config/animationConfig'
 import { starVertexShader, starFragmentShader } from './starShader'
 import { deepSkyVertexShader, deepSkyFragmentShader } from './deepSkyShader'
 import { glowVertexShader, glowFragmentShader } from './glowShader'
+import { skylineGlowVertexShader, skylineGlowFragmentShader } from './skylineGlowShader'
+import { skyDomeVertexShader, skyDomeFragmentShader } from './skyDomeShader'
 import { makeMoonSprite } from './moonView'
 
 export type Phase = 'input' | 'rewind' | 'rising' | 'info' | 'gaze' | 'ending'
@@ -113,6 +115,102 @@ export default function SkyScene({
     g.setAttribute('position', new THREE.BufferAttribute(built.ambient, 3))
     return g
   }, [built])
+
+  // 静态天幕渐变球（场景根，不随星空旋转）：深蓝→近黑 + 地平线极淡暖辉，
+  // 让纯黑的城市剪影与金色描边能从天空里读出来。
+  const domeGeo = useMemo(() => new THREE.SphereGeometry(CONFIG.sphereRadius * 0.99, 48, 32), [])
+  const domeMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uZenith: { value: new THREE.Color(CONFIG.dome.zenith) },
+          uHorizon: { value: new THREE.Color(CONFIG.dome.horizon) },
+          uGlow: {
+            value: new THREE.Color(
+              CONFIG.dome.glow[0],
+              CONFIG.dome.glow[1],
+              CONFIG.dome.glow[2],
+            ),
+          },
+        },
+        vertexShader: skyDomeVertexShader,
+        fragmentShader: skyDomeFragmentShader,
+        side: THREE.BackSide,
+        depthWrite: false,
+      }),
+    [],
+  )
+
+  // 天际线金色描边辉光带（triangle-strip 横幅，随顶部边向下渐隐）
+  const skylineGlowGeo = useMemo(() => {
+    const g = built.skylineGlow
+    if (!g) return null
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(g.positions, 3))
+    geo.setAttribute('aV', new THREE.BufferAttribute(g.v, 1))
+    geo.setIndex(new THREE.BufferAttribute(g.index, 1))
+    if (import.meta.env.DEV) {
+      const verts = built.skylineGlow!.positions.length / 3
+      const dbg = (window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ || {}
+      ;(window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ = {
+        ...dbg,
+        skylineGlowVerts: verts,
+      }
+    }
+    return geo
+  }, [built])
+
+  // 粗金线 mesh：沿天际线顶部的小条三角带，给天际线真实厚度
+  const skylineEdgeStripGeo = useMemo(() => {
+    const g = built.skylineEdgeStrip
+    if (!g) return null
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(g.positions, 3))
+    geo.setAttribute('aV', new THREE.BufferAttribute(g.v, 1))
+    geo.setIndex(new THREE.BufferAttribute(g.index, 1))
+    if (import.meta.env.DEV) {
+      const verts = built.skylineEdgeStrip!.positions.length / 3
+      const dbg = (window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ || {}
+      ;(window as unknown as { __SKY_DEBUG__?: Record<string, unknown> }).__SKY_DEBUG__ = {
+        ...dbg,
+        skylineEdgeStripVerts: verts,
+      }
+    }
+    return geo
+  }, [built])
+
+  const skylineGlowMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(CONFIG.skyline.glowColor) },
+          uOpacity: { value: CONFIG.skyline.glowOpacity },
+        },
+        vertexShader: skylineGlowVertexShader,
+        fragmentShader: skylineGlowFragmentShader,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    [],
+  )
+
+  // 粗金线材质：比辉光带更实、更亮，集中在上缘，形成"烫金印章"边线
+  const skylineEdgeStripMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(CONFIG.skyline.goldColor) },
+          uOpacity: { value: CONFIG.skyline.edgeOpacity },
+        },
+        vertexShader: skylineGlowVertexShader,
+        fragmentShader: skylineGlowFragmentShader,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    [],
+  )
 
   // 出生城市天际线金色描边（连续折线）。无天际线城市（空数组）不渲染。
   const skylineEdgeGeo = useMemo(() => {
@@ -222,7 +320,7 @@ export default function SkyScene({
   const horizonMat = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: new THREE.Color('#04060d'),
+        color: new THREE.Color(CONFIG.skyline.horizonFill),
         transparent: true,
         opacity: 0.96,
         side: THREE.DoubleSide,
@@ -311,13 +409,26 @@ export default function SkyScene({
   // 释放旧资源，避免内存泄漏
   useEffect(() => {
     return () => {
-      ;[mainGeo, galaxyGeo, dustGeo, horizonGeo, constGeo, ambientGeo].forEach((g) => g.dispose())
+      ;[mainGeo, galaxyGeo, dustGeo, horizonGeo, constGeo, ambientGeo, domeGeo].forEach((g) => g.dispose())
       skylineEdgeGeo?.dispose()
+      skylineGlowGeo?.dispose()
+      skylineEdgeStripGeo?.dispose()
       deepSkyGeo?.dispose()
       glowGeo?.dispose()
-      ;[mainMat, galaxyMat, dustMat, horizonMat, constMat, ambientMat, skylineEdgeMat, deepSkyMat, glowMat].forEach(
-        (m) => m.dispose(),
-      )
+      ;[
+        mainMat,
+        galaxyMat,
+        dustMat,
+        horizonMat,
+        constMat,
+        ambientMat,
+        skylineEdgeMat,
+        skylineGlowMat,
+        skylineEdgeStripMat,
+        deepSkyMat,
+        glowMat,
+        domeMat,
+      ].forEach((m) => m.dispose())
       if (moonSprite) {
         const mm = moonSprite.material as THREE.SpriteMaterial
         mm.map?.dispose()
@@ -328,7 +439,7 @@ export default function SkyScene({
         m.dispose()
       })
     }
-  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat, deepSkyGeo, glowGeo, deepSkyMat, glowMat, moonSprite])
+  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat, skylineGlowGeo, skylineGlowMat, skylineEdgeStripGeo, skylineEdgeStripMat, deepSkyGeo, glowGeo, deepSkyMat, glowMat, moonSprite, domeGeo, domeMat])
 
   // ---------- 交互与动画状态 ----------
   const phaseRef = useRef(phase)
@@ -442,6 +553,8 @@ export default function SkyScene({
     horizonMat.opacity = 0.95 * f
     constMat.opacity = 0.32 * f
     skylineEdgeMat.opacity = CONFIG.skyline.edgeOpacity * f
+    skylineGlowMat.uniforms.uOpacity.value = CONFIG.skyline.glowOpacity * f
+    skylineEdgeStripMat.uniforms.uOpacity.value = CONFIG.skyline.edgeOpacity * f
     // 深空天体与亮星辉光：在星空形成后随点亮淡入；输入/倒流界面隐藏（保证黑场再亮）
     const skyVis = phaseRef.current === 'input' || phaseRef.current === 'rewind' ? 0 : 1
     const reveal = clamp(elapsed / 3, 0, 1)
@@ -463,6 +576,8 @@ export default function SkyScene({
   return (
     <>
       <color attach="background" args={['#05070f']} />
+      {/* 静态天幕渐变（不随星空旋转），让黑剪影与金线可辨 */}
+      <mesh args={[domeGeo, domeMat]} renderOrder={-10} />
       <group ref={worldRef}>
         {deepSkyGeo && <points args={[deepSkyGeo, deepSkyMat]} />}
         {glowGeo && <points args={[glowGeo, glowMat]} />}
@@ -472,7 +587,9 @@ export default function SkyScene({
         {moonSprite && <primitive object={moonSprite} />}
         <mesh args={[horizonGeo, horizonMat]} />
         <lineSegments visible={showConstellations} args={[constGeo, constMat]} />
-        {skylineEdgeLine && <primitive object={skylineEdgeLine} />}
+        {/* 天际线：宽辉光带 + 粗金线描边 */}
+        {skylineGlowGeo && <mesh args={[skylineGlowGeo, skylineGlowMat]} renderOrder={2} />}
+        {skylineEdgeStripGeo && <mesh args={[skylineEdgeStripGeo, skylineEdgeStripMat]} renderOrder={3} />}
         <primitive object={directionsGroup} />
       </group>
       <group ref={ambientRef}>

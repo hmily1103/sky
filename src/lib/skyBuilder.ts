@@ -46,6 +46,20 @@ export interface HorizonGeometryData {
   profile: HorizonProfile
 }
 
+/** 天际线金色描边辉光带：沿顶部边向下延伸的 triangle-strip 横幅（aV=1 顶端亮，aV=0 底端透明） */
+export interface SkylineGlowData {
+  positions: Float32Array
+  v: Float32Array
+  index: Uint16Array
+}
+
+/** 粗金线 mesh：沿天际线顶部的一小条三角带，有真实厚度，不再依赖 1px WebGL 线宽 */
+export interface SkylineEdgeStripData {
+  positions: Float32Array
+  v: Float32Array
+  index: Uint16Array
+}
+
 /** 深空天体（梅西耶）柔和图标缓冲：按类型画椭圆/圆斑，additive 叠加 */
 export interface DeepSkyBuffers {
   positions: Float32Array
@@ -78,6 +92,10 @@ export interface BuiltSky {
   constellationLines: Float32Array
   /** 出生城市天际线金色描边的连续折线顶点（场景坐标；空数组表示无天际线） */
   skylineEdge: Float32Array
+  /** 天际线金色描边辉光带（triangle-strip 横幅，随顶部边向下渐隐）；无天际线为 null */
+  skylineGlow: SkylineGlowData | null
+  /** 粗金线 mesh（有真实厚度）；无天际线为 null */
+  skylineEdgeStrip: SkylineEdgeStripData | null
   /** 深空天体柔和图标（梅西耶，按类型渲染） */
   deepSky: DeepSkyBuffers
   /** 亮星辉光（柔光 + 衍射星芒） */
@@ -318,6 +336,64 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
   }
   const skylineEdge = new Float32Array(skyEdgePts)
 
+  // ---------- 天际线辉光带（沿顶部边向下渐隐的发光横幅） ----------
+  // 每一对相邻边点构成一小段横幅：上缘(alt)亮、下缘(alt-glowWidth)透明，
+  // 形成"烫金发光描边"，而不是孤零零一条 1px 细线。无天际线时为 null。
+  let skylineGlow: SkylineGlowData | null = null
+  let skylineEdgeStrip: SkylineEdgeStripData | null = null
+  if (skyEdgeRaw.length > 1) {
+    const gw = CONFIG.skyline.glowWidth
+    const n = skyEdgeRaw.length
+    const pos: number[] = []
+    const vattr: number[] = []
+    const idx: number[] = []
+    for (let i = 0; i < n; i++) {
+      const p = skyEdgeRaw[i]
+      const top = azAltToVec(p.azimuth, p.altitude, hR)
+      const botAlt = Math.max(-1.2, p.altitude - gw)
+      const bot = azAltToVec(p.azimuth, botAlt, hR)
+      pos.push(top[0], top[1], top[2], bot[0], bot[1], bot[2])
+      vattr.push(1, 0) // 上缘=1（亮），下缘=0（透明）
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a = i * 2
+      const b = i * 2 + 1
+      const c = (i + 1) * 2
+      const d = (i + 1) * 2 + 1
+      idx.push(a, b, c, b, d, c)
+    }
+    skylineGlow = {
+      positions: new Float32Array(pos),
+      v: new Float32Array(vattr),
+      index: new Uint16Array(idx),
+    }
+
+    // 粗金线：紧贴顶部边的一小条三角带，有真实厚度，不再受 WebGL 1px 线宽限制
+    const ew = CONFIG.skyline.edgeWidth
+    const epos: number[] = []
+    const ev: number[] = []
+    const eidx: number[] = []
+    for (let i = 0; i < n; i++) {
+      const p = skyEdgeRaw[i]
+      const top = azAltToVec(p.azimuth, Math.min(90, p.altitude + ew), hR)
+      const bot = azAltToVec(p.azimuth, p.altitude, hR)
+      epos.push(top[0], top[1], top[2], bot[0], bot[1], bot[2])
+      ev.push(1, 0) // 顶亮，底融进辉光带
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a = i * 2
+      const b = i * 2 + 1
+      const c = (i + 1) * 2
+      const d = (i + 1) * 2 + 1
+      eidx.push(a, b, c, b, d, c)
+    }
+    skylineEdgeStrip = {
+      positions: new Float32Array(epos),
+      v: new Float32Array(ev),
+      index: new Uint16Array(eidx),
+    }
+  }
+
   // ---------- 深空天体（梅西耶）：柔和图标，按类型区分长轴/色调 ----------
   // 数据层已按观测时刻投影，且仅保留地平线以上；这里只负责转成渲染缓冲。
   // 角尺寸偏小，乘 gain 提升可见度（非真实比例，属视觉增强，页面会标注）。
@@ -398,6 +474,8 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     ambient,
     constellationLines,
     skylineEdge,
+    skylineGlow,
+    skylineEdgeStrip,
     deepSky,
     glow,
     moon,

@@ -139,12 +139,25 @@ try {
   console.log('constellation segments:', segs)
   await shot('06-constellations.png')
 
-  // 出生城市天际线（北京）：烫金剪影描边点数应 > 0
+  // 出生城市天际线（北京）：描边点数与粗金线 mesh 顶点应 > 0
   const skylinePts = await page.evaluate(
     () => window.__SKY_DEBUG__?.skylineEdgePoints ?? -1,
   )
   if (!(skylinePts > 0)) errors.push('[test] 北京天际线未渲染或描边点数为0: ' + skylinePts)
   console.log('skyline edge points:', skylinePts)
+
+  // 金线辉光带（发光横幅）与粗金线 mesh 应已渲染
+  const glowVerts = await page.evaluate(
+    () => window.__SKY_DEBUG__?.skylineGlowVerts ?? -1,
+  )
+  if (!(glowVerts > 0)) errors.push('[test] 天际线金线辉光带未渲染或顶点数为0: ' + glowVerts)
+  console.log('skyline glow verts:', glowVerts)
+
+  const edgeStripVerts = await page.evaluate(
+    () => window.__SKY_DEBUG__?.skylineEdgeStripVerts ?? -1,
+  )
+  if (!(edgeStripVerts > 0)) errors.push('[test] 天际线粗金线 mesh 未渲染或顶点数为0: ' + edgeStripVerts)
+  console.log('skyline edge strip verts:', edgeStripVerts)
 
   // 专业星图补强：深空天体（梅西耶）与亮星辉光应已渲染
   const deepSkyCount = await page.evaluate(
