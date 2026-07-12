@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-single/
+*.tsbuildinfo
+
+# Vite / TS compiled config artifacts
+vite.config.js
+vite.config.d.ts
+vite.config.*.timestamp-*.mjs
+
+# Smoke-test screenshots (generated artifacts)
+scripts/shots/
+
+# Packaged standalone build
+*.zip
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# WorkBuddy internal data
+.workbuddy/
