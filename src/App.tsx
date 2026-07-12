@@ -27,7 +27,7 @@ export default function App() {
   const [skyData, setSkyData] = useState<SkyData>(() =>
     generateSky({ date: new Date().toISOString().slice(0, 10), locationName: '北京' }),
   )
-  const [showConstellations, setShowConstellations] = useState(true)
+  const [showConstellations, setShowConstellations] = useState(false)
   const [showInfo, setShowInfo] = useState(true)
   const [showData, setShowData] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
