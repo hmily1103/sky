@@ -1,7 +1,41 @@
 import puppeteer from 'puppeteer-core'
 import fs from 'node:fs'
 
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+// 跨平台探测 Chrome 可执行文件：优先 CHROME_PATH 环境变量，其次按平台探测常见路径。
+function resolveChrome() {
+  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
+    return process.env.CHROME_PATH
+  }
+  const candidates = {
+    win32: [
+      'C:/Program Files/Google/Chrome/Application/chrome.exe',
+      'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+      (process.env.LOCALAPPDATA || '') + '/Google/Chrome/Application/chrome.exe',
+      'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+    ],
+    darwin: [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ],
+    linux: [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/snap/bin/chromium',
+    ],
+  }
+  const list = candidates[process.platform] || candidates.linux
+  for (const p of list) {
+    if (p && fs.existsSync(p)) return p
+  }
+  throw new Error(
+    `未找到 Chrome/Chromium 可执行文件（platform=${process.platform}）。请设置 CHROME_PATH 环境变量指向浏览器。`,
+  )
+}
+
+const CHROME = resolveChrome()
 const OUT = './scripts/shots/'
 fs.mkdirSync(OUT, { recursive: true })
 

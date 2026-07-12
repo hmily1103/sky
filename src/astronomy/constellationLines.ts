@@ -6,6 +6,7 @@
 
 import * as Astronomy from 'astronomy-engine'
 import type { Observer } from 'astronomy-engine'
+import { raDegToHours } from './raUnits'
 import raw from './data/constellations.lines.json'
 
 interface RawFeature {
@@ -67,10 +68,19 @@ export function computeConstellationLines(
     if (rank > maxRank) continue
     const polylines: ProjectedPoint[][] = []
     for (const line of f.geometry.coordinates) {
-      const pts: ProjectedPoint[] = []
-      for (const [ra, dec] of line) {
-        const hor = Astronomy.Horizon(utc, observer, ra, dec, 'normal')
-        if (hor.altitude < -2) continue // 地平线以下不绘制
+      // 断点逻辑：一条星座折线可能有部分点在地平线以下。遇到不可见点时，
+      // 把当前已累积的可见段先收尾（≥2 点才成线），再从下一个可见点重新开始，
+      // 避免把地平线两侧原本不相邻的端点直接连成一条穿越天空的假线段。
+      let pts: ProjectedPoint[] = []
+      for (const [raDeg, dec] of line) {
+        // 星座数据赤经为角度制，Horizon() 要求小时制，必须换算
+        const hor = Astronomy.Horizon(utc, observer, raDegToHours(raDeg), dec, 'normal')
+        if (hor.altitude < -2) {
+          // 地平线以下：断开当前段
+          if (pts.length >= 2) polylines.push(pts)
+          pts = []
+          continue
+        }
         pts.push({ azimuth: hor.azimuth, altitude: hor.altitude })
       }
       if (pts.length >= 2) polylines.push(pts)

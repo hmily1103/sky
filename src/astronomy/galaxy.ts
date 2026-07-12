@@ -6,6 +6,7 @@
 import * as Astronomy from 'astronomy-engine'
 import type { Observer } from 'astronomy-engine'
 import { SkyObject } from '../types/sky'
+import { raDegToHours } from './raUnits'
 import { createRng } from '../lib/prng'
 
 const GC_RA = 266.4051 // 银心方向赤经 (deg, J2000)
@@ -71,7 +72,8 @@ export function buildMilkyWay(observer: Observer, utc: Date): SkyObject[] {
       const lJ = l + (rng() - 0.5) * lStep
       const bJ = b + (rng() - 0.5) * bStep
       const { ra, dec } = galacticToEquatorial(lJ, bJ)
-      const hor = Astronomy.Horizon(utc, observer, ra, dec, 'normal')
+      // ra 为角度制，Horizon() 要求小时制，必须换算
+      const hor = Astronomy.Horizon(utc, observer, raDegToHours(ra), dec, 'normal')
       if (hor.altitude < -3) continue
       const ct = 5600 + (bJ / bMax) * 1600 + Math.sin(lJ * 1.7) * 300
       out.push({
