@@ -18,9 +18,9 @@ export const CONFIG = {
     galaxyMobileCap: 1400,
     dustCount: 1600,
     /** 主星点尺寸范围（像素基准，最终会乘尺寸系数与透视衰减）。
-     *  min 略放大，让最暗的星也有可感知的柔晕，不再是一个硬点 */
-    sizeMin: 1.9,
-    sizeMax: 4.9,
+     *  保持较小尺寸，让星点呈现真实摄影感：极亮小核 + 极淡晕，不做大色块。 */
+    sizeMin: 1.1,
+    sizeMax: 3.3,
     /** 银河带基础点尺寸（最终会按该点相对亮度再放大，形成柔光带） */
     galaxySize: 2.4,
     dustSize: 1.1,
