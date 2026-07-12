@@ -94,7 +94,8 @@ function toComputed(
       try {
         const illum = Astronomy.Illumination(body, date)
         p.phase = illum.phase_fraction
-        p.phaseName = moonPhaseName(illum.phase_fraction, moonIsWaxing(date, observer))
+        p.waxing = moonIsWaxing(date, observer)
+        p.phaseName = moonPhaseName(illum.phase_fraction, p.waxing)
       } catch {
         /* 月相可选，失败不影响主流程 */
       }

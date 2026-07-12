@@ -18,6 +18,16 @@ export interface StarBuffers {
   heros: Float32Array
 }
 
+/** 月亮：真实圆盘月相渲染所需的独立缓冲（不进主星/辉光） */
+export interface MoonBuffers {
+  /** 场景坐标（地平线以上） */
+  position: [number, number, number]
+  /** 照度分数 0–1（0 新月，1 满月） */
+  phaseFrac: number
+  /** 是否盈（上弦前为盈、下弦后为亏），决定明暗界线方向 */
+  waxing: boolean
+}
+
 function allocBuffers(n: number): StarBuffers {
   return {
     positions: new Float32Array(n * 3),
@@ -72,6 +82,8 @@ export interface BuiltSky {
   deepSky: DeepSkyBuffers
   /** 亮星辉光（柔光 + 衍射星芒） */
   glow: GlowBuffers
+  /** 月亮：真实圆盘月相（独立渲染，不进主星/辉光缓冲） */
+  moon: MoonBuffers | null
   /** 调试信息，便于页面明确标识“视觉模拟” */
   meta: {
     seed: string
@@ -113,8 +125,10 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
   const seed = `${input.date}|${timeKey}|${input.locationName}`
   const R = CONFIG.sphereRadius
 
-  // ---------- 主星（含行星）：galaxy / deepsky 走独立缓冲，这里排除 ----------
-  const starPlanet = objects.filter((o) => o.type !== 'galaxy' && o.type !== 'deepsky')
+  // ---------- 主星（含行星）：galaxy / deepsky / 月亮 走独立缓冲，这里排除 ----------
+  const starPlanet = objects.filter(
+    (o) => o.type !== 'galaxy' && o.type !== 'deepsky' && !o.isMoon,
+  )
   const sorted = [...starPlanet].sort((a, b) => a.magnitude - b.magnitude)
   const mainCount = Math.min(
     sorted.length,
@@ -336,9 +350,12 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     deepSky.stretch[i] = Math.min(4, Math.max(1, st))
   }
 
-  // ---------- 亮星辉光（柔光晕 + 衍射星芒）：仅最亮星，克制 ----------
+  // ---------- 亮星辉光（柔光晕 + 衍射星芒）：仅最亮星，克制（月亮独立渲染，排除） ----------
   const glowStars = mainTop.filter(
-    (o) => (o.type === 'star' || o.type === 'planet') && o.magnitude < CONFIG.stars.glowMag,
+    (o) =>
+      (o.type === 'star' || o.type === 'planet') &&
+      o.magnitude < CONFIG.stars.glowMag &&
+      !o.isMoon,
   )
   const glowCount = glowStars.length
   const glow: GlowBuffers = {
@@ -361,6 +378,18 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     glow.sizes[i] = CONFIG.stars.glowSize * (1.5 - t)
   }
 
+  // ---------- 月亮：真实圆盘月相（独立缓冲，不进主星/辉光） ----------
+  const moonObj = objects.find((o) => o.isMoon)
+  let moon: MoonBuffers | null = null
+  if (moonObj && moonObj.altitude > -2) {
+    const [mx, my, mz] = azAltToVec(moonObj.azimuth, moonObj.altitude, R)
+    moon = {
+      position: [mx, my, mz],
+      phaseFrac: moonObj.phaseFrac ?? 0,
+      waxing: moonObj.waxing ?? true,
+    }
+  }
+
   return {
     main,
     galaxy,
@@ -371,6 +400,7 @@ export function buildSkyScene(skyData: SkyData, opts: BuildOptions): BuiltSky {
     skylineEdge,
     deepSky,
     glow,
+    moon,
     meta: { seed, terrain: horizonProfile.terrain, mainCount },
   }
 }

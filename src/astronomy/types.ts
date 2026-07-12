@@ -54,6 +54,8 @@ export interface ComputedPlanet {
   phase?: number
   /** 月相中文名（如 盈凸月），仅月亮 */
   phaseName?: string
+  /** 月亮是否“盈”（waxing）：月黄经领先太阳，处于上弦前。仅月亮 */
+  waxing?: boolean
   visibleAboveHorizon: boolean
   colorTemperature?: number
 }

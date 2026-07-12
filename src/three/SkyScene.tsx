@@ -8,6 +8,7 @@ import { CONFIG } from '../config/animationConfig'
 import { starVertexShader, starFragmentShader } from './starShader'
 import { deepSkyVertexShader, deepSkyFragmentShader } from './deepSkyShader'
 import { glowVertexShader, glowFragmentShader } from './glowShader'
+import { makeMoonSprite } from './moonView'
 
 export type Phase = 'input' | 'rewind' | 'rising' | 'info' | 'gaze' | 'ending'
 
@@ -171,6 +172,9 @@ export default function SkyScene({
     return g
   }, [built])
 
+  // 月亮：真实圆盘月相（独立 sprite，随 worldRef 旋转）
+  const moonSprite = useMemo(() => (built.moon ? makeMoonSprite(built.moon) : null), [built])
+
   const makeSoftMat = (
     vert: string,
     frag: string,
@@ -314,12 +318,17 @@ export default function SkyScene({
       ;[mainMat, galaxyMat, dustMat, horizonMat, constMat, ambientMat, skylineEdgeMat, deepSkyMat, glowMat].forEach(
         (m) => m.dispose(),
       )
+      if (moonSprite) {
+        const mm = moonSprite.material as THREE.SpriteMaterial
+        mm.map?.dispose()
+        mm.dispose()
+      }
       dirMats.forEach((m) => {
         m.map?.dispose()
         m.dispose()
       })
     }
-  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat, deepSkyGeo, glowGeo, deepSkyMat, glowMat])
+  }, [mainGeo, galaxyGeo, dustGeo, horizonGeo, ambientGeo, mainMat, galaxyMat, dustMat, horizonMat, ambientMat, dirMats, skylineEdgeGeo, skylineEdgeMat, deepSkyGeo, glowGeo, deepSkyMat, glowMat, moonSprite])
 
   // ---------- 交互与动画状态 ----------
   const phaseRef = useRef(phase)
@@ -421,8 +430,14 @@ export default function SkyScene({
     dustMat.uniforms.uTime.value = elapsed
 
     const f = endingState.current.fade
+    // 视觉导演：真实夜晚状态反向调节银河/光晕/深空强度。
+    // skyBrightness 越高（满月或白昼），这些层越被压暗（月亮本身不压，它是真实光源）。
+    const dim = skyData.director?.skyBrightness ?? 0
+    const dimG = 1 - CONFIG.director.galaxy * dim
+    const dimGlow = 1 - CONFIG.director.glow * dim
+    const dimDs = 1 - CONFIG.director.deepSky * dim
     mainMat.uniforms.uOpacity.value = 1 * f
-    galaxyMat.uniforms.uOpacity.value = 0.85 * f
+    galaxyMat.uniforms.uOpacity.value = 0.85 * f * dimG
     dustMat.uniforms.uOpacity.value = 0.5 * f
     horizonMat.opacity = 0.95 * f
     constMat.opacity = 0.32 * f
@@ -432,11 +447,11 @@ export default function SkyScene({
     const reveal = clamp(elapsed / 3, 0, 1)
     if (deepSkyMat) {
       deepSkyMat.uniforms.uReveal.value = reveal
-      deepSkyMat.uniforms.uOpacity.value = CONFIG.deepsky.baseOpacity * f * skyVis
+      deepSkyMat.uniforms.uOpacity.value = CONFIG.deepsky.baseOpacity * f * skyVis * dimDs
     }
     if (glowMat) {
       glowMat.uniforms.uReveal.value = reveal
-      glowMat.uniforms.uOpacity.value = CONFIG.stars.glowOpacity * f * skyVis
+      glowMat.uniforms.uOpacity.value = CONFIG.stars.glowOpacity * f * skyVis * dimGlow
     }
     // 星尘只在输入/倒流界面作为背景；星空形成后隐藏，保证“完全变黑”再点亮
     const ambVis = phaseRef.current === 'input' || phaseRef.current === 'rewind' ? 1 : 0
@@ -454,6 +469,7 @@ export default function SkyScene({
         <points args={[mainGeo, mainMat]} />
         <points args={[galaxyGeo, galaxyMat]} />
         <points args={[dustGeo, dustMat]} />
+        {moonSprite && <primitive object={moonSprite} />}
         <mesh args={[horizonGeo, horizonMat]} />
         <lineSegments visible={showConstellations} args={[constGeo, constMat]} />
         {skylineEdgeLine && <primitive object={skylineEdgeLine} />}

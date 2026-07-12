@@ -173,6 +173,7 @@ export function toSkyData(result: AstronomicalSkyResult): SkyData {
       bodyName: p.name,
       isMoon: p.type === 'moon',
       phaseFrac: p.phase,
+      waxing: p.type === 'moon' ? p.waxing : undefined,
       phaseName: p.phaseName,
     })
   }
@@ -199,6 +200,20 @@ export function toSkyData(result: AstronomicalSkyResult): SkyData {
       warnings: metadata.warnings,
       heroStar: metadata.heroStar,
     },
+    // 视觉导演系数：把真实夜晚状态转译为银河/光晕的压暗强度。
+    // 白昼最亮（0.95）；月亮在地平线以上时按照度贡献 0–0.7；二者取较大值。
+    director: (() => {
+      const moonObj = planets.find((p) => p.type === 'moon')
+      const moonVisible = !!moonObj && moonObj.altitude > 0
+      const moonFactor = moonVisible ? (moonObj?.phase ?? 0) * 0.7 : 0
+      const dayFactor = isDaytime ? 0.95 : 0
+      return {
+        isDaytime,
+        moonVisible,
+        moonPhaseFrac: moonObj?.phase ?? 0,
+        skyBrightness: Math.max(dayFactor, moonFactor),
+      }
+    })(),
     // 真实星座连线（按出生时刻与地点投影的 IAU 星座形状；视觉辅助，非伪造）
     constellationLines: computeConstellationLines(observer, date, { maxRank: 2 }),
   }

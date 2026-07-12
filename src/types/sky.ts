@@ -42,6 +42,8 @@ export interface SkyObject {
   isMoon?: boolean
   /** 月亮照度分数 0–1（0 新月，1 满月） */
   phaseFrac?: number
+  /** 月亮是否“盈”（waxing）：上弦前为盈、下弦后为亏。渲染月相明暗方向用 */
+  waxing?: boolean
   /** 月相中文名（如 盈凸月），由数据层依据照度与盈亏方向计算 */
   phaseName?: string
   /** 是否“那夜最亮的星”（首星锚点：开场第一颗点亮，并有提示音） */
@@ -62,6 +64,21 @@ export interface SkyData {
   astronomy?: AstronomyMeta
   /** 真实星座连线（IAU 星座形状，按出生时刻与地点投影）。属真实天文定位，仅作视觉辅助。 */
   constellationLines?: ConstellationLine[]
+  /** 视觉导演系数：由真实夜晚状态（白昼 / 月相照度）推导，用于反向调节银河与光晕强度。
+   *  0 = 无环境光（新月夜 / 月亮在地平线下），1 = 最亮（白昼或满月当空）。 */
+  director?: DirectorInfo
+}
+
+/** 视觉导演信息：把“那一夜真实的夜晚状态”转译为渲染参数 */
+export interface DirectorInfo {
+  /** 出生时刻当地是否为白昼（太阳在地平线以上） */
+  isDaytime: boolean
+  /** 月亮当时是否位于地平线以上（可见并照亮夜空） */
+  moonVisible: boolean
+  /** 月亮照度分数 0–1（0 新月，1 满月） */
+  moonPhaseFrac: number
+  /** 综合环境亮度 0–1，越高银河/光晕越应被压暗 */
+  skyBrightness: number
 }
 
 /** 地点解析结果（第二轮统一接口，与页面组件解耦） */
