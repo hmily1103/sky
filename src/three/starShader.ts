@@ -53,22 +53,31 @@ export const starFragmentShader = /* glsl */ `
 
   void main() {
     vec2 uv = gl_PointCoord - 0.5;
-    float d = length(uv);
+    float d = length(uv);          // 0=中心, 0.5=精灵边缘
     if (d > 0.5) discard;
 
-    // 柔和光晕：核心更亮，边缘羽化
-    float core = smoothstep(0.5, 0.0, d);
-    float glow = pow(core, 2.4);
-    float alpha = glow * vBright * uOpacity;
-    if (alpha < 0.008) discard;
+    // 紧致核心：明亮但只占内圈，对应真实星点的“核”
+    float coreD = clamp(d / 0.32, 0.0, 1.0);
+    float core = pow(1.0 - coreD, 1.8);
 
-    vec3 col = vColor * (0.55 + 0.85 * glow);
+    // 向外扩散的柔晕：覆盖整个精灵，亮度沿半径平缓下降，
+    // 让星不再是“硬点”，而是一颗带弥散盘的真实星（光学真实）。
+    float halo = pow(smoothstep(0.5, 0.0, d), 1.25) * 0.6;
+
+    // 取较亮者：核心明亮、外围柔和过渡
+    float intensity = max(core, halo);
+
+    float alpha = intensity * vBright * uOpacity;
+    if (alpha < 0.006) discard;
+
+    // 核心更亮更偏白，柔晕保留星的本色
+    vec3 col = vColor * (0.6 + 0.8 * core);
 
     // 首星额外一层极淡外晕，标记“第一颗亮起”的瞬间（克制，不喧宾夺主）
     if (vHero > 0.5) {
-      float halo = smoothstep(0.5, 0.12, d) * 0.35;
-      col += vColor * halo;
-      alpha = clamp(alpha + halo * vBright * uOpacity, 0.0, 1.0);
+      float heroHalo = smoothstep(0.5, 0.04, d) * 0.4;
+      col += vColor * heroHalo;
+      alpha = clamp(alpha + heroHalo * vBright * uOpacity, 0.0, 1.0);
     }
 
     gl_FragColor = vec4(col, alpha);
